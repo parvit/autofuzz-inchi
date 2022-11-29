@@ -33,10 +33,11 @@ RUN bash -c 'echo "echo Use \"docker cp /path/to/input <container>:/path/inside/
 
 # Only the last ENTRYPOINT or CMD is honored, so this can be overridden.
 ENTRYPOINT /bin/bash
-RUN apt-get install -y --force-yes wget make unzip
+RUN apt-get install -y --force-yes wget make unzip git
 WORKDIR /fuzzing
-RUN wget --no-check-certificate https://www.inchi-trust.org/wp/wp-content/uploads/2014/06/INCHI-1-API.zip
-RUN unzip INCHI-1-API.zip
+
+RUN bash-c 'git clone https://github.com/parvit/autofuzz-inchi.git'
+
 WORKDIR /fuzzing/INCHI-1-API/INCHI_API/inchi_dll
 # The makefile is a mess as it doesn't use CC/CXX/CFLAGS/etc, plus it doesn't
 # seem to build by default, so we just build manually.
@@ -78,5 +79,7 @@ RUN bash -c 'echo "/fuzzing/fuzzer \$1" >> /fuzzing/repro.sh'
 RUN bash -c 'echo "echo REPRO_END" >> /fuzzing/repro.sh'
 RUN bash -c 'chmod 755 /fuzzing/repro.sh'
 
-RUN bash -c 'echo "echo \"Repro: /fuzzing/repro.sh <poc>\"" >> /root/.bashrc'
-
+RUN bash -c '/fuzzing/repro.sh /fuzzing/test_74018597'
+RUN bash -c '/fuzzing/repro.sh /fuzzing/test_74096660'
+RUN bash -c '/fuzzing/repro.sh /fuzzing/test_74097108'
+RUN bash -c '/fuzzing/repro.sh /fuzzing/test_74097869'

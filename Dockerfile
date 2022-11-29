@@ -36,7 +36,7 @@ ENTRYPOINT /bin/bash
 RUN apt-get install -y --force-yes wget make unzip git
 WORKDIR /fuzzing
 
-RUN bash-c 'git clone https://github.com/parvit/autofuzz-inchi.git'
+RUN bash -c 'git clone https://github.com/parvit/autofuzz-inchi.git'
 
 WORKDIR /fuzzing/INCHI-1-API/INCHI_API/inchi_dll
 # The makefile is a mess as it doesn't use CC/CXX/CFLAGS/etc, plus it doesn't

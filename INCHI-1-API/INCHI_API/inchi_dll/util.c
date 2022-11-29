@@ -1065,7 +1065,7 @@ char *p, pp;
     if (strlen(str)<1)
         return;
 
-    p = strstr(str, "InChI=");
+    p = (char*)strstr(str, "InChI=");
     if (NULL==p)
         return;
     

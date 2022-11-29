@@ -526,6 +526,7 @@ int ReadWriteInChI(INCHI_IOSTREAM *pInp, INCHI_IOSTREAM *pOut, INCHI_IOSTREAM *p
                     inchi_free(OneInput.nNumProtons[iINChI][j].pNumProtons);
                     OneInput.nNumProtons[iINChI][j].pNumProtons = NULL;
                 }
+                OneInput.nNumComponents[iINChI][j] = 0;
             }
         }
         
@@ -4914,6 +4915,8 @@ int ParseSegmentIsoAtoms( const char *str, int bMobileH, INChI *pInpInChI[], int
     iComponent = 0;
     nNumComponents = ppnNumComponents[bMobileH];
 
+    INChI *pIsoInChI = &pInChI[iComponent];
+
     if ( !(bMobileH==TAUT_YES && state == IST_MOBILE_H_ISO_ATOMS ||
            bMobileH==TAUT_NON && state == IST_FIXED_H_ISO_ATOMS ) ) {
         return RI_ERR_PROGR; /* program error */
@@ -5001,7 +5004,7 @@ int ParseSegmentIsoAtoms( const char *str, int bMobileH, INChI *pInpInChI[], int
             p = pStart;
         }
         pStart = p;
-        pIsotopicAtom = &pInChI[iComponent].IsotopicAtom;
+        pIsotopicAtom = &pIsoInChI->IsotopicAtom;
         if ( *pIsotopicAtom ) {
             ret = RI_ERR_PROGR; /* program error */
             goto exit_function;
@@ -5198,12 +5201,14 @@ int ParseSegmentSp3s( const char *str, int bMobileH, INChI *pInpInChI[], int s[T
         return RI_ERR_PROGR; /* program error */
     }
 
-    if ( str[0] != 's' )
-        return 0;
-
     pStart = str+1;
     iComponent = 0;
     nNumComponents = ppnNumComponents[bMobileH];
+
+    if ( str[0] != 's' ) {
+        return 0;
+    }
+    ppnNumComponents[bMobileH] = nNumComponents;
 
     /*if ( !(pEnd = strchr( pStart, ';' )) )*/ /* 2007-09-25 DT */
     if ( !(pEnd = strchr( pStart, '/' )) ){
@@ -5219,7 +5224,8 @@ int ParseSegmentSp3s( const char *str, int bMobileH, INChI *pInpInChI[], int s[T
         s[bMobileH][bIso] = NO_VALUE_INT; /* empty */
         /* create empty sp3 segment */
         for ( iComponent = 0; iComponent < nNumComponents; iComponent ++ ) {
-            pStereo = bIso? &pInChI[iComponent].StereoIsotopic : &pInChI[iComponent].Stereo;
+            INChI *pIsoInChI = &pInChI[iComponent];
+            pStereo = bIso? &pIsoInChI->StereoIsotopic : &pIsoInChI->Stereo;
             if ( !*pStereo ) {
                 if ( !(*pStereo = (INChI_Stereo *) inchi_calloc( 1, sizeof(**pStereo) ) ) ) {
                     ret = RI_ERR_ALLOC; /* memory allocation failed */
@@ -5459,7 +5465,7 @@ int ParseSegmentSp3( const char *str, int bMobileH, INChI *pInpInChI[], int ppnN
 {
     /* Pass 1: count bonds and find actual numbers of  atom */
     int i, mpy_component, val;
-    int nNumComponents, iComponent, len, iAtom;
+    int nNumComponents = 0, iComponent, len, iAtom;
     AT_NUMB nAtom1;
     int     atomParity;
     const char *p, *q, *t, *pStart, *pEnd, *r;
@@ -5489,11 +5495,12 @@ int ParseSegmentSp3( const char *str, int bMobileH, INChI *pInpInChI[], int ppnN
     iComponent = 0;
     nNumComponents = ppnNumComponents[bMobileH];
 
+    INChI *pIsoInChI = &pInChI[iComponent];
+    
     if ( !*pStart ) {
         /* create empty sp3 segment */
         int len0 = 0;
         for ( iComponent = 0; iComponent < nNumComponents; iComponent ++ ) {
-            INChI *pIsoInChI = &pInChI[iComponent];
             pStereo = bIso? &pIsoInChI->StereoIsotopic : &pIsoInChI->Stereo;
             if ( !*pStereo ) {
                 if ( !(*pStereo = (INChI_Stereo *) inchi_calloc( 1, sizeof(**pStereo) ) ) ) {
@@ -5716,7 +5723,7 @@ int ParseSegmentSp3( const char *str, int bMobileH, INChI *pInpInChI[], int ppnN
 
         /* memory allocation */
 
-        pStereo = bIso? &pInChI[iComponent].StereoIsotopic : &pInChI[iComponent].Stereo;
+        pStereo = bIso? &pIsoInChI->StereoIsotopic : &pIsoInChI->Stereo;
 
         if ( !*pStereo ) {
             if ( !(*pStereo = (INChI_Stereo *) inchi_calloc( 1, sizeof(**pStereo) ) ) ) {
@@ -7513,7 +7520,7 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
     int i, j, mpy_component, mpy_atom, len, el_number;
     int nNumComponents = 0, iComponent, nNumAtoms, nNumAtomsAndH, iAtom, nNumH, nAltMobileH = ALT_TAUT(bMobileH);
     const char *p, *q, *e, *pStart, *pEnd;
-    INChI *pInChI;
+    INChI **pInChI = NULL;
     char szEl[3];
 
     nNumAtoms = -999; /* impossible value */
@@ -7544,23 +7551,26 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
         else
             break;
     }
-    pnNumComponents[bMobileH] = nNumComponents;
 
 #if ( FIX_DALKE_BUGS == 1 )
     if ( nNumComponents > MAX_ATOMS ) {
+        pnNumComponents[bMobileH] = 1;
         return RI_ERR_SYNTAX; /* syntax error */
     }
-#endif    
+#endif
+    pnNumComponents[bMobileH] = nNumComponents;
+
     /* exit or error check */
     if ( !nNumComponents ) {
         if ( !*pStart || islower( UCINT *pStart ) ) {
             INCHI_HEAPCHK
             if ( bMobileH == TAUT_NON && 0 < ( nNumComponents = pnNumComponents[nAltMobileH]) ) {
                 /* allocate InChI */
-                if ( !( pInChI = (INChI *)inchi_calloc( nNumComponents, sizeof(INChI) ) ) ) {
+                pInChI = &pInpInChI[bMobileH];
+                if ( !( pInpInChI[bMobileH] = (INChI *)inchi_calloc( nNumComponents, sizeof(INChI) ) ) ) {
                     return RI_ERR_ALLOC; /* alloc failure */
                 }
-                pInpInChI[bMobileH] = pInChI;
+                memset( pInpInChI[bMobileH], 0, nNumComponents * sizeof(INChI) );
                 pnNumComponents[bMobileH] = nNumComponents;
                 for ( i = 0; i < nNumComponents; i ++ ) {
                     /* copy number of atoms */
@@ -7595,13 +7605,16 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
                 nNumComponents = 1;
                 /* InChI */
                 pnNumComponents[bMobileH] = nNumComponents;
-                if ( !( pInChI = (INChI *)inchi_calloc( nNumComponents, sizeof(INChI) ) ) ) {
-                    return RI_ERR_ALLOC; /* alloc failure */
-                }
-                pInpInChI[bMobileH] = pInChI;
-                ret = nFillOutProtonMobileH( pInChI );
-                if ( ret < 0 ) {
-                    return ret;
+                pInChI = &pInpInChI[bMobileH];
+                if( !pInpInChI[bMobileH] ) {
+                    if ( !( pInpInChI[bMobileH] = (INChI *)inchi_calloc( nNumComponents, sizeof(INChI) ) ) ) {
+                        return RI_ERR_ALLOC; /* alloc failure */
+                    }
+                    memset( pInpInChI[bMobileH], 0, nNumComponents * sizeof(INChI) );
+                    ret = nFillOutProtonMobileH( pInpInChI[bMobileH] );
+                    if ( ret < 0 ) {
+                        return ret;
+                    }
                 }
             }
             return 0;
@@ -7613,10 +7626,10 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
     }
 
     /* allocate InChI */
+    pInChI = &pInpInChI[bMobileH];
     if ( !( pInpInChI[bMobileH] = (INChI *)inchi_calloc( nNumComponents, sizeof(INChI) ) ) ) {
         return RI_ERR_ALLOC; /* alloc failure */
     }
-    pInChI = pInpInChI[bMobileH];
 
     /* Pass 2. Count elements, save formulas and elements */
     pStart = str;
@@ -7636,21 +7649,26 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
         if ( iComponent + mpy_component > MAX_ATOMS ) {
             return RI_ERR_SYNTAX; /* syntax error */
         }
-#endif    
+#endif
+        if ( iComponent >= nNumComponents ) {
+            // eg. "InChI=1/C."
+            return RI_ERR_SYNTAX; /* syntax error */
+        }
         len = pEnd-p;
-        for ( i = 0; i < mpy_component; i ++ ) {
-            if ( pInChI[iComponent+i].szHillFormula ) {
-                inchi_free( pInChI[iComponent+i].szHillFormula );
+        for ( i = 0; i < mpy_component; i++ ) {
+            INChI* pComponent = pInChI[iComponent+i];
+            if ( pComponent->szHillFormula ) {
+                inchi_free( pComponent->szHillFormula );
             }
-            pInChI[iComponent+i].szHillFormula = (char*) inchi_malloc( inchi_max(len,1)+1 );
-            memcpy( pInChI[iComponent].szHillFormula, p, len );
-            pInChI[iComponent+i].szHillFormula[len] = '\0';
+            pComponent->szHillFormula = (char*) inchi_malloc( inchi_max(len,1)+1 );
+            memcpy( pComponent->szHillFormula, p, len );
+            pComponent->szHillFormula[len] = '\0';
             if ( !i ) {
                 /* Pass 2.1 Parse formula and count atoms except H */
                 nNumAtoms = 0;
                 nNumH     = 0;
                 nNumAtomsAndH = 0;
-                e = pInChI[iComponent].szHillFormula;
+                e = pComponent->szHillFormula;
                 while ( *e ) {
                     if ( !isupper( UCINT *e ) ) {
                         return RI_ERR_SYNTAX;
@@ -7682,17 +7700,17 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
                 }
 #endif    
                 nNumAtomsAndH = nNumAtoms? nNumAtoms : (nNumH > 0);
-                pInChI[iComponent+i].nNumberOfAtoms = nNumAtomsAndH;
-                if ( pInChI[iComponent+i].nAtom ) {
-                    inchi_free( pInChI[iComponent+i].nAtom );
+                pComponent->nNumberOfAtoms = nNumAtomsAndH;
+                if ( pComponent->nAtom ) {
+                    inchi_free( pComponent->nAtom );
                 }
-                pInChI[iComponent+i].nAtom = (U_CHAR *) inchi_malloc((nNumAtomsAndH+1)*sizeof(pInChI[0].nAtom[0]));
-                if ( !pInChI[iComponent+i].nAtom )
+                pComponent->nAtom = (U_CHAR *) inchi_malloc((nNumAtomsAndH+1)*sizeof(pInChI[0]->nAtom[0]));
+                if ( !pComponent->nAtom )
                     return RI_ERR_ALLOC; /* failed allocation */
                 /* Pass 2.2 Store elements; this assumes no bridging H. Bridging H will be found in connection table, /c */
                 iAtom = 0;
                 if ( nNumAtoms > 0 ) { 
-                    e = pInChI[iComponent+i].szHillFormula;
+                    e = pComponent->szHillFormula;
                     while ( *e ) {
                         if ( !isupper( UCINT *e ) ) {
                             return RI_ERR_SYNTAX;
@@ -7721,30 +7739,31 @@ int ParseSegmentFormula( const char *str, int bMobileH, INChI *pInpInChI[], int 
                             if ( iAtom >= nNumAtoms ) {
                                 return RI_ERR_PROGR; /* program error */
                             }
-                            pInChI[iComponent+i].nAtom[iAtom ++] = (U_CHAR)el_number;
+                            pComponent->nAtom[iAtom ++] = (U_CHAR)el_number;
                         }
                     }
                 } else
                 if ( nNumH > 0 ) {
-                    pInChI[iComponent+i].nAtom[iAtom ++] = EL_NUMBER_H;
+                    pComponent->nAtom[iAtom ++] = EL_NUMBER_H;
                     nNumAtoms = 1;
                 }
-                pInChI[iComponent+i].nAtom[iAtom] = '\0';
+                pComponent->nAtom[iAtom] = '\0';
                 if ( nNumAtoms != iAtom ) {
                     return RI_ERR_PROGR; /* program error */
                 }
             } else {
+                INChI* pDupComponent = pInChI[iComponent];
                 /* Copy duplicated formula */
-                strcpy(pInChI[iComponent+i].szHillFormula, pInChI[iComponent].szHillFormula);
+                strcpy(pComponent->szHillFormula, pDupComponent->szHillFormula);
                 /* Copy atoms in the duplicated formula */
-                pInChI[iComponent+i].nNumberOfAtoms = nNumAtoms;
-                if ( pInChI[iComponent+i].nAtom ) {
-                    inchi_free( pInChI[iComponent+i].nAtom );
+                pComponent->nNumberOfAtoms = nNumAtoms;
+                if ( pComponent->nAtom ) {
+                    inchi_free( pComponent->nAtom );
                 }
-                pInChI[iComponent+i].nAtom = (U_CHAR *) inchi_malloc(nNumAtoms+1);
-                if ( !pInChI[iComponent+i].nAtom )
+                pComponent->nAtom = (U_CHAR *) inchi_malloc(nNumAtoms+1);
+                if ( !pComponent->nAtom )
                     return RI_ERR_ALLOC; /* failed allocation */
-                memcpy( pInChI[iComponent+i].nAtom, pInChI[iComponent].nAtom, nNumAtoms+1 );
+                memcpy( pComponent->nAtom, pDupComponent->nAtom, nNumAtoms+1 );
             }
         }
         iComponent += i;
